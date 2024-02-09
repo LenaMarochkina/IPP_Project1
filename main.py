@@ -66,17 +66,19 @@ STRING_REGEX = r'^string@(.+)$'
 
 def parse_instruction(line):
     tokens = line.split()
-    tokens_num = 0;
+
     if tokens[0] not in CODE_COMMANDS:
         return None, None, None, None
+    if len(tokens)-1 == len(CODE_COMMANDS[tokens[0]].arg_types) :
+        opcode = tokens[0]
+        arg1 = tokens[1] if len(tokens) > 1 else None
+        arg2 = tokens[2] if len(tokens) > 2 else None
+        arg3 = tokens[3] if len(tokens) > 3 else None
+        return opcode, arg1, arg2, arg3
+    else :
+        print('Wrong arguments number:', line)
+        sys.exit(ERROR_OPCODE)
 
-    opcode = tokens[0]
-    arg1 = tokens[1] if len(tokens) > 1 else None
-    arg2 = tokens[2] if len(tokens) > 2 else None
-    arg3 = tokens[3] if len(tokens) > 3 else None
-
-
-    return opcode, arg1, arg2, arg3
 
 def parse_code():
     instructions = []
@@ -133,12 +135,11 @@ def generate_xml(instructions):
                 arg3_element.text = convert_string(arg3)
             else:
                 arg3_element.text = arg3
-        # Add a newline character after each instruction
-        ET.SubElement(root, "").text = "\n"
 
         order += 1
 
     tree = ET.ElementTree(root)
+    ET.indent(tree, space="\t", level=0)
     tree.write(sys.stdout, encoding="unicode", xml_declaration=True)
 
 def remove_comments(lines):
