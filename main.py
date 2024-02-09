@@ -65,15 +65,18 @@ LABEL_REGEX = r'^[^\s]+$'
 STRING_REGEX = r'^string@(.+)$'
 
 def parse_instruction(line):
-    match = re.match(TOKEN_REGEX, line)
-    if match:
-        opcode = match.group(1)
-        arg1 = match.group(2)
-        arg2 = match.group(3)
-        arg3 = match.group(4)
-        return opcode, arg1, arg2, arg3
-    else:
+    tokens = line.split()
+    tokens_num = 0;
+    if tokens[0] not in CODE_COMMANDS:
         return None, None, None, None
+
+    opcode = tokens[0]
+    arg1 = tokens[1] if len(tokens) > 1 else None
+    arg2 = tokens[2] if len(tokens) > 2 else None
+    arg3 = tokens[3] if len(tokens) > 3 else None
+
+
+    return opcode, arg1, arg2, arg3
 
 def parse_code():
     instructions = []
@@ -130,6 +133,8 @@ def generate_xml(instructions):
                 arg3_element.text = convert_string(arg3)
             else:
                 arg3_element.text = arg3
+        # Add a newline character after each instruction
+        ET.SubElement(root, "").text = "\n"
 
         order += 1
 
