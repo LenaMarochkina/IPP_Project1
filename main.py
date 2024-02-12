@@ -64,20 +64,44 @@ TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|P
 LABEL_REGEX = r'^[^\s]+$'
 STRING_REGEX = r'^string@(.+)$'
 
+def recognize_arg_type(arg):
+    if arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
+        return E_ARG_TYPE.VAR
+    elif arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@"):
+        return E_ARG_TYPE.SYMB
+    elif arg.startswith("label@"):
+        return E_ARG_TYPE.LABEL
+    elif arg in ["int", "bool", "string"]:
+        return E_ARG_TYPE.TYPE
+    else:
+        # If the argument does not match any recognized pattern, return None
+        return None
+
+def check_type(arg, arg_number, opcode):
+        if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
+            print('Wrong argument type:', arg)
+            sys.exit(ERROR_OPCODE)
+
 def parse_instruction(line):
     tokens = line.split()
 
     if tokens[0] not in CODE_COMMANDS:
         return None, None, None, None
-    if len(tokens)-1 == len(CODE_COMMANDS[tokens[0]].arg_types) :
-        opcode = tokens[0]
-        arg1 = tokens[1] if len(tokens) > 1 else None
-        arg2 = tokens[2] if len(tokens) > 2 else None
-        arg3 = tokens[3] if len(tokens) > 3 else None
-        return opcode, arg1, arg2, arg3
-    else :
+
+    opcode = tokens[0]
+
+    if len(tokens) - 1 != len(CODE_COMMANDS[opcode].arg_types):
         print('Wrong arguments number:', line)
         sys.exit(ERROR_OPCODE)
+
+    args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
+
+    # Check argument types after assignment
+    for i, arg in enumerate(args):
+        if arg is not None:
+            check_type(arg, i, opcode)
+
+    return (opcode,) + tuple(args)
 
 
 def parse_code():
