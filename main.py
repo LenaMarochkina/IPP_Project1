@@ -6,6 +6,8 @@ import xml.etree.ElementTree as ET
 ERROR_HEADER = 21
 ERROR_OPCODE = 22
 ERROR_SYNTAX = 23
+ERROR_OPEN_FILE = 11
+
 
 # Enum for argument types
 class E_ARG_TYPE:
@@ -14,11 +16,13 @@ class E_ARG_TYPE:
     LABEL = 'label'
     TYPE = 'type'
 
+
 # Class to represent command with opcode and expected argument types
 class CodeCommand:
     def __init__(self, opcode, arg_types):
         self.opcode = opcode
         self.arg_types = arg_types
+
 
 # Dictionary to store predefined commands with their argument types
 CODE_COMMANDS = {
@@ -64,6 +68,7 @@ TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|P
 LABEL_REGEX = r'^[^\s]+$'
 STRING_REGEX = r'^string@(.+)$'
 
+
 def recognize_arg_type(arg):
     if arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
         return E_ARG_TYPE.VAR
@@ -77,10 +82,12 @@ def recognize_arg_type(arg):
         # If the argument does not match any recognized pattern, return None
         return None
 
+
 def check_type(arg, arg_number, opcode):
-        if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
-            print('Wrong argument type:', arg)
-            sys.exit(ERROR_OPCODE)
+    if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
+        print('Wrong argument type:', arg)
+        sys.exit(ERROR_OPCODE)
+
 
 def parse_instruction(line):
     tokens = line.split()
@@ -124,6 +131,7 @@ def convert_string(string):
     else:
         return None
 
+
 def generate_xml(instructions):
     root = ET.Element("program")
     root.set("language", "IPPcode24")
@@ -166,13 +174,16 @@ def generate_xml(instructions):
     ET.indent(tree, space="\t", level=0)
     tree.write(sys.stdout, encoding="unicode", xml_declaration=True)
 
+
 def remove_comments(lines):
     return [re.sub(r'#.*', '', line).strip() for line in lines]
+
 
 def usage() :
     print('Script for parsing IPPcode24 to XML.')
     print('Usage: parse.php [options]')
     print('Options: -h, --help ')
+
 
 def process_args() :
     try:
@@ -187,6 +198,7 @@ def process_args() :
             usage()
             sys.exit()
 
+
 def check_header():
     try:
         first_line = input().strip()
@@ -198,11 +210,16 @@ def check_header():
         print('Wrong header:', first_line)
         sys.exit(ERROR_HEADER)
 
+
 def main() :
     process_args()
 
     # Check the first line is correct
-    check_header()
+    try:
+        check_header()
+    except (ValueError, IOError) as e:
+        print("Error:", str(e))
+        sys.exit(ERROR_OPEN_FILE)
 
     # Parse input to the file
     instructions = parse_code()
