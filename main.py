@@ -70,7 +70,9 @@ STRING_REGEX = r'^string@(.+)$'
 
 
 def recognize_arg_type(arg):
-    if arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
+    if arg is None:
+        return None
+    elif arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
         return E_ARG_TYPE.VAR
     elif arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@"):
         return E_ARG_TYPE.SYMB
@@ -83,13 +85,21 @@ def recognize_arg_type(arg):
         return None
 
 
-def check_type(arg, arg_number, opcode):
+def check_type(arg, arg_number, opcode, global_vars, local_vars):
     if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
         print('Wrong argument type:', arg)
         sys.exit(ERROR_OPCODE)
 
+    if arg and recognize_arg_type(arg) == E_ARG_TYPE.VAR:
+        if arg.startswith("GF@") and arg not in global_vars:
+            print("Global variable not declared:", arg)
+            sys.exit(ERROR_SYNTAX)
+        elif arg.startswith("LF@") and arg not in local_vars:
+            print("Local variable not declared:", arg)
+            sys.exit(ERROR_SYNTAX)
 
-def parse_instruction(line):
+
+def parse_instruction(line, global_vars, local_vars):
     tokens = line.split()
 
     if tokens[0] not in CODE_COMMANDS:
@@ -103,28 +113,57 @@ def parse_instruction(line):
 
     args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
 
+    # here I need to recognize arg type for each arg and place it in args_type array
+    arg_types = [recognize_arg_type(arg) for arg in args]
+
     # Check argument types after assignment
     for i, arg in enumerate(args):
         if arg is not None:
-            check_type(arg, i, opcode)
+            # Check if the variable is global and has been declared
+            if arg.startswith("GF@") and arg not in global_vars:
+                print(f"Global variable not declared: {arg}")
+                sys.exit(ERROR_OPCODE)
+            check_type(arg, i, opcode, global_vars, local_vars)
 
-    return (opcode,) + tuple(args)
+    return (opcode,) + tuple(args) + tuple(arg_types)
 
 
 def parse_code():
     instructions = []
+    global_vars = set()
+    local_vars = set()
+
+    # Flag to indicate whether global variables are being declared
+    declaring_global_vars = False
+
     while True:
         try:
             line = input().strip()
         except EOFError:
             break
-        opcode, arg1, arg2, arg3 = parse_instruction(line)
-        if opcode:
-            instructions.append((opcode, arg1, arg2, arg3))
-    return instructions
+        line = remove_comments([line])[0]
+
+        # Check if the line declares global variables
+        if line.startswith("DEFVAR GF@"):
+            declaring_global_vars = True
+            global_var = line.split()[1]  # Extract only the variable name without 'GF@'
+            if global_var:
+                global_vars.add(global_var)
+        elif line.strip() == "":
+            declaring_global_vars = False
+        # elif declaring_global_vars:
+        #     global_var = line.split()[0][3:]  # Extract only the variable name without 'GF@'
+        #     print(global_var)
+        #     if global_var:
+        #         global_vars.add(global_var)
+        instruction = parse_instruction(line, global_vars, local_vars)
+        if instruction[0]:  # Check if the instruction is not None
+            instructions.append(instruction)
+    return instructions, global_vars, local_vars
 
 
 def convert_string(string):
+    print('Here', string)
     match = re.match(STRING_REGEX, string)
     if match:
         return match.group(1)
@@ -136,56 +175,54 @@ def generate_xml(instructions):
     root = ET.Element("program")
     root.set("language", "IPPcode24")
     order = 1
-    for opcode, arg1, arg2, arg3 in instructions:
-        instruction = ET.SubElement(root, "instruction")
-        instruction.set("order", str(order))
-        instruction.set("opcode", opcode)
+    for instruction in instructions:
+        opcode, arg1, arg2, arg3, arg1_type, arg2_type, arg3_type = instruction
+
+        instruction_element = ET.SubElement(root, "instruction")
+        instruction_element.set("order", str(order))
+        instruction_element.set("opcode", opcode)
 
         # Process argument 1
         if arg1:
-            arg1_element = ET.SubElement(instruction, "arg1")
-            arg1_element.set("type", "string" if convert_string(arg1) else "var")
-            if convert_string(arg1):
-                arg1_element.text = convert_string(arg1)
-            else:
-                arg1_element.text = arg1
+            arg1_element = ET.SubElement(instruction_element, "arg1")
+            arg1_element.set("type", arg1_type)
+            arg1_element.text = arg1
 
         # Process argument 2
         if arg2:
-            arg2_element = ET.SubElement(instruction, "arg2")
-            arg2_element.set("type", "string" if convert_string(arg2) else "var")
-            if convert_string(arg2):
-                arg2_element.text = convert_string(arg2)
-            else:
-                arg2_element.text = arg2
+            arg2_element = ET.SubElement(instruction_element, "arg2")
+            arg2_element.set("type", arg2_type)
+            arg2_element.text = arg2
 
         # Process argument 3
         if arg3:
-            arg3_element = ET.SubElement(instruction, "arg3")
-            arg3_element.set("type", "string" if convert_string(arg3) else "var")
-            if convert_string(arg3):
-                arg3_element.text = convert_string(arg3)
-            else:
-                arg3_element.text = arg3
+            arg3_element = ET.SubElement(instruction_element, "arg3")
+            arg3_element.set("type", arg3_type)
+            arg3_element.text = arg3
 
         order += 1
 
     tree = ET.ElementTree(root)
-    ET.indent(tree, space="\t", level=0)
-    tree.write(sys.stdout, encoding="unicode", xml_declaration=True)
+    ET.indent(tree, space="  ", level=0)
+    xml_string = ET.tostring(root, encoding="unicode", xml_declaration=True)
+    # Strip the trailing '%' character
+    xml_string = xml_string.rstrip('%')
+    xml_string = xml_string.replace('\t', '  ')
+    print(xml_string)
+
 
 
 def remove_comments(lines):
     return [re.sub(r'#.*', '', line).strip() for line in lines]
 
 
-def usage() :
+def usage():
     print('Script for parsing IPPcode24 to XML.')
     print('Usage: parse.php [options]')
     print('Options: -h, --help ')
 
 
-def process_args() :
+def process_args():
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h", ["help"])
     except getopt.GetoptError as err:
@@ -211,7 +248,7 @@ def check_header():
         sys.exit(ERROR_HEADER)
 
 
-def main() :
+def main():
     process_args()
 
     # Check the first line is correct
@@ -222,13 +259,12 @@ def main() :
         sys.exit(ERROR_OPEN_FILE)
 
     # Parse input to the file
-    instructions = parse_code()
+    instructions, global_vars, local_vars = parse_code()
     if not instructions:
         exit(ERROR_SYNTAX)
 
     # Generate XML
     generate_xml(instructions)
-
 
 if __name__ == "__main__":
     main()
