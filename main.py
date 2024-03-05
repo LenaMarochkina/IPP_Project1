@@ -207,18 +207,19 @@ def preprocess_input(input_lines):
     # Join the preprocessed lines with newline characters
     return '\n'.join(preprocessed_lines)
 
-def define_var_and_labels(line):
-    # Check if the line declares global variables
-    if re.match(DEFVAR_REGEX, line):
-        declaring_global_vars = True
-        global_var = line.split()[1]
-        if global_var:
-            global_vars.add(global_var)
+def define_var_and_labels(lines):
+    for line in lines:
+        # Check if the line declares global variables
+        if re.match(DEFVAR_REGEX, line):
+            declaring_global_vars = True
+            global_var = line.split()[1]
+            if global_var:
+                global_vars.add(global_var)
 
-    # Check if the line defines a label
-    elif re.match(LABEL_REGEX, line):
-        label_name = line.split()[1]
-        labels.add(label_name)
+        # Check if the line defines a label
+        elif re.match(LABEL_REGEX, line):
+            label_name = line.split()[1]
+            labels.add(label_name)
 
 
 def parse_code(preprocessed_lines):
@@ -227,11 +228,11 @@ def parse_code(preprocessed_lines):
     # Split the preprocessed lines into individual lines
     lines = preprocessed_lines.split('\n')
 
+    define_var_and_labels(lines)
+
     for line in lines:
         # Process each line
         line = line.strip()
-
-        define_var_and_labels(line)
 
         instruction = parse_instruction(line)
         if instruction[0]:  # Check if the instruction is not None
@@ -328,8 +329,10 @@ def main():
     process_args()
 
     # Read input lines
-    input_lines = sys.stdin.readlines()
+    # input_lines = sys.stdin.readlines()
 
+    with open ('./IPP2024.txt', 'r') as file:
+        input_lines = file.readlines()
     # Preprocess input
     preprocessed_lines = preprocess_input(input_lines)
 
@@ -341,6 +344,8 @@ def main():
     if not instructions:
         exit(ERROR_SYNTAX)
 
+    # Print the parsed instructions
+    print(instructions)
     print(labels)
     # Generate XML
     generate_xml(instructions)
