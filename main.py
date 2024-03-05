@@ -71,6 +71,30 @@ STRING_REGEX = r'^string@(.+)$'
 DEFVAR_REGEX = r'^DEFVAR\s+\w+'
 
 
+def check_header():
+    try:
+        first_line = input().strip()
+    except EOFError:
+        print('Empty input')
+        sys.exit(ERROR_HEADER)
+
+    if first_line != '.IPPcode24':
+        print('Wrong header:', first_line)
+        sys.exit(ERROR_HEADER)
+
+
+def check_single_opcode(line):
+    tokens = line.split()
+
+    # Count the number of opcodes in the line
+    num_opcodes = sum(1 for token in tokens if token.upper() in CODE_COMMANDS)
+
+    # If more than one opcode is found, raise an error
+    if num_opcodes > 1:
+        print("Error: More than one opcode found in the line:", line)
+        sys.exit(ERROR_SYNTAX)
+
+
 def recognize_arg_type(arg):
     if arg is None:
         return None
@@ -100,44 +124,43 @@ def check_type(arg, arg_number, opcode, global_vars, local_vars):
             print("Local variable not declared:", arg)
             sys.exit(ERROR_SYNTAX)
 
-def check_single_opcode(line):
-    tokens = line.split()
 
-    # Count the number of opcodes in the line
-    num_opcodes = sum(1 for token in tokens if token.upper() in CODE_COMMANDS)
-
-    # If more than one opcode is found, raise an error
-    if num_opcodes > 1:
-        print("Error: More than one opcode found in the line:", line)
-        sys.exit(ERROR_SYNTAX)
-
-def parse_instruction(line, global_vars, local_vars):
-    # Check if the line contains only one opcode
-    check_single_opcode(line)
-
-    tokens = line.split()
-
-    # Convert the opcode to uppercase
-    opcode = tokens[0].upper()
-
-    if opcode not in CODE_COMMANDS:
-        return None, None, None, None
-
+def check_number_of_args(tokens, opcode, line):
     if len(tokens) - 1 != len(CODE_COMMANDS[opcode].arg_types):
         print('Wrong arguments number:', line)
         sys.exit(ERROR_OPCODE)
 
-    args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
 
-    # here I need to recognize arg type for each arg and place it in args_type array
-    arg_types = [recognize_arg_type(arg) for arg in args]
+def process_args():
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "h", ["help"])
+    except getopt.GetoptError as err:
+        print(str(err))
+        usage()
+        sys.exit(2)
 
-    # Check argument types after assignment
-    for i, arg in enumerate(args):
-        if arg is not None:
-            check_type(arg, i, opcode, global_vars, local_vars)
+    for opt, arg in opts:
+        if opt in ("-h", "--help"):
+            usage()
+            sys.exit()
 
-    return (opcode,) + tuple(args) + tuple(arg_types)
+
+def preprocess_input(input_lines):
+    preprocessed_lines = []
+
+    # Process the first line separately and add it directly to the preprocessed lines
+    preprocessed_lines.append(input_lines[0].strip())
+
+    # Process the rest of the lines
+    for line in input_lines[1:]:
+        # Remove comments and strip leading/trailing whitespace
+        line = re.sub(r'#.*', '', line).strip()
+        # Skip empty lines
+        if line:
+            preprocessed_lines.append(line)
+
+    # Join the preprocessed lines with newline characters
+    return '\n'.join(preprocessed_lines)
 
 
 def parse_code(preprocessed_lines):
@@ -167,13 +190,32 @@ def parse_code(preprocessed_lines):
     return instructions, global_vars, local_vars
 
 
+def parse_instruction(line, global_vars, local_vars):
+    # Check if the line contains only one opcode
+    check_single_opcode(line)
 
-def convert_string(string):
-    match = re.match(STRING_REGEX, string)
-    if match:
-        return match.group(1)
-    else:
-        return None
+    tokens = line.split()
+
+    # Convert the opcode to uppercase
+    opcode = tokens[0].upper()
+
+    if opcode not in CODE_COMMANDS:
+        return None, None, None, None
+
+    # Check if the number of arguments is correct
+    check_number_of_args(tokens, opcode, line)
+
+    args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
+
+    # Recognize arg type for each arg and place it in args_type array
+    arg_types = [recognize_arg_type(arg) for arg in args]
+
+    # Check argument types after assignment
+    for i, arg in enumerate(args):
+        if arg is not None:
+            check_type(arg, i, opcode, global_vars, local_vars)
+
+    return (opcode,) + tuple(args) + tuple(arg_types)
 
 
 def generate_xml(instructions):
@@ -216,58 +258,10 @@ def generate_xml(instructions):
     print(xml_string)
 
 
-
-def remove_comments(lines):
-    return [re.sub(r'#.*', '', line).strip() for line in lines]
-
-
 def usage():
     print('Script for parsing IPPcode24 to XML.')
     print('Usage: parse.php [options]')
     print('Options: -h, --help ')
-
-
-def process_args():
-    try:
-        opts, args = getopt.getopt(sys.argv[1:], "h", ["help"])
-    except getopt.GetoptError as err:
-        print(str(err))
-        usage()
-        sys.exit(2)
-
-    for opt, arg in opts:
-        if opt in ("-h", "--help"):
-            usage()
-            sys.exit()
-
-
-def check_header():
-    try:
-        first_line = input().strip()
-    except EOFError:
-        print('Empty input')
-        sys.exit(ERROR_HEADER)
-
-    if first_line != '.IPPcode24':
-        print('Wrong header:', first_line)
-        sys.exit(ERROR_HEADER)
-
-def preprocess_input(input_lines):
-    preprocessed_lines = []
-
-    # Process the first line separately and add it directly to the preprocessed lines
-    preprocessed_lines.append(input_lines[0].strip())
-
-    # Process the rest of the lines
-    for line in input_lines[1:]:
-        # Remove comments and strip leading/trailing whitespace
-        line = re.sub(r'#.*', '', line).strip()
-        # Skip empty lines
-        if line:
-            preprocessed_lines.append(line)
-
-    # Join the preprocessed lines with newline characters
-    return '\n'.join(preprocessed_lines)
 
 
 def main():
