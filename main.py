@@ -74,9 +74,9 @@ TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|P
 # Regular expression for a valid variable name
 VAR_NAME_REGEX = r'^[a-z-A-Z_\-$&%*!?][\w_\-$&%*!?]*$'
 # Regular expression to match "DEFVAR" followed by optional whitespace and "GF@"
-DEFVAR_REGEX = r'^DEFVAR\s+\w+'
+DEFVAR_REGEX = re.compile(r'^DEFVAR\s+\w+', re.IGNORECASE)
 # Regular expression to match "LABEL" followed by optional whitespace and "GF@"
-LABEL_REGEX = r'^LABEL\s+\w+'
+LABEL_REGEX = re.compile(r'^LABEL\s+\w+', re.IGNORECASE)
 
 
 def check_header(preprocessed_lines):
@@ -100,7 +100,7 @@ def check_single_opcode(line):
     # If more than one opcode is found, raise an error
     if num_opcodes > 1:
         print("Error: More than one opcode found in the line:", line)
-        sys.exit(ERROR_SYNTAX)
+        sys.exit(ERROR_OTHER_SYNTAX)
 
 
 def validate_variable_name(var):
@@ -110,62 +110,93 @@ def validate_variable_name(var):
     """
     return bool(re.match(VAR_NAME_REGEX, var))
 
+def is_valid_integer(value):
+    # Decimal integer regex pattern
+    decimal_pattern = r'^[+-]?\d+$'
+    # Octal integer regex pattern
+    octal_pattern = r'^0[oO][0-7]+$'
+    # Hexadecimal integer regex pattern
+    hexadecimal_pattern = r'^0[xX][0-9a-fA-F]+$'
+
+    # Check if the value matches any of the integer patterns
+    if re.match(decimal_pattern, value) or re.match(octal_pattern, value) or re.match(hexadecimal_pattern, value):
+        return True
+    else:
+        return False
+
+
+def is_valid_bool(value):
+    # Check if the boolean value is either 'true' or 'false'
+    return value in ['true', 'false']
+
+def is_valid_nil(value):
+    # Check if the value is 'nil'
+    return value == 'nil'
 
 def recognize_arg_type(arg):
     if arg is None:
         return None
     elif arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
-        return E_ARG_TYPE.VAR
+        if validate_variable_name(arg[3:]):
+            return E_ARG_TYPE.VAR
+        else:
+            print("Invalid variable name:", arg)
+            sys.exit(ERROR_OTHER_SYNTAX)
     elif arg.startswith("int@"):
-        return E_ARG_TYPE.INT
+        if is_valid_integer(arg[len("int@"):]):
+            return E_ARG_TYPE.INT
+        else:
+            print("Invalid integer format:", arg)
+            sys.exit(ERROR_OTHER_SYNTAX)
     elif arg.startswith("bool@"):
-        return E_ARG_TYPE.BOOL
+        if is_valid_bool(arg[len("bool@"):]):
+            return E_ARG_TYPE.BOOL
+        else:
+            print("Invalid boolean format:", arg)
+            sys.exit(ERROR_OTHER_SYNTAX)
     elif arg.startswith("string@"):
         return E_ARG_TYPE.STRING
     elif arg.startswith("nil@"):
-        return E_ARG_TYPE.NIL
-    elif arg in labels:
+        if is_valid_nil(arg[len("nil@"):]):
+            return E_ARG_TYPE.NIL
+        else:
+            print("Invalid boolean format:", arg)
+            sys.exit(ERROR_OTHER_SYNTAX)
+    elif arg in ['int', 'bool', 'string']:
+        return E_ARG_TYPE.TYPE
+    elif validate_variable_name(arg):
         return E_ARG_TYPE.LABEL
     else:
-        # If the argument does not match any recognized pattern, return None
         return None
+    # else:
+    #     # If the argument does not match any recognized pattern, return error
+    #     print("Invalid argument format:", arg)
+    #     sys.exit(ERROR_OTHER_SYNTAX)
 
 
 def check_type(arg, arg_number, opcode):
-    global global_vars
-    global local_vars
-
     arg_type = recognize_arg_type(arg)
     if arg_type != CODE_COMMANDS[opcode].arg_types[arg_number]:
         # Check if the arg type is a string constant and the expected type is SYMB
-        if arg_type == E_ARG_TYPE.STRING or E_ARG_TYPE.INT or E_ARG_TYPE.BOOL or E_ARG_TYPE.NIL and CODE_COMMANDS[opcode].arg_types[arg_number] == E_ARG_TYPE.SYMB:
+        if arg_type in [E_ARG_TYPE.STRING, E_ARG_TYPE.INT, E_ARG_TYPE.BOOL, E_ARG_TYPE.NIL, E_ARG_TYPE.VAR] and CODE_COMMANDS[opcode].arg_types[arg_number] == E_ARG_TYPE.SYMB:
             return  # Allow string constants to satisfy the SYMB requirement
         else:
             print('Wrong argument type:', arg)
-            sys.exit(ERROR_SYNTAX)
+            sys.exit(ERROR_OTHER_SYNTAX)
 
-    if arg and arg_type == E_ARG_TYPE.VAR:
-        if arg.startswith("GF@") and arg not in global_vars:
-            print("Global variable not declared:", arg)
-            sys.exit(ERROR_SYNTAX)
-        elif arg.startswith("LF@") and arg not in local_vars:
-            print("Local variable not declared:", arg)
-            sys.exit(ERROR_SYNTAX)
+    # if arg and arg_type == E_ARG_TYPE.VAR:
+    #     if arg.startswith("GF@") and arg not in global_vars:
+    #         print("Global variable not declared:", arg)
+    #         sys.exit(ERROR_SYNTAX)
+    #     elif arg.startswith("LF@") and arg not in local_vars:
+    #         print("Local variable not declared:", arg)
+    #         sys.exit(ERROR_SYNTAX)
 
 
 def check_number_of_args(tokens, opcode, line):
     if len(tokens) - 1 != len(CODE_COMMANDS[opcode].arg_types):
         print('Wrong arguments number:', line)
-        sys.exit(ERROR_SYNTAX)
-
-
-def process_constant_string(arg):
-    if arg.startswith("string@"):
-        arg_value = arg[len("string@"):]  # Extract the value part of the constant string
-        arg_value = re.sub(r'\\(\d{3})', lambda m: chr(int(m.group(1))), arg_value)  # Replace escape sequences
-        return arg_value  # Return the processed constant string value
-    else:
-        return arg  # Return the argument unchanged if it's not a constant string with escape sequences
+        sys.exit(ERROR_OTHER_SYNTAX)
 
 
 def process_args():
@@ -189,7 +220,7 @@ def preprocess_input(input_lines):
     program_started = False
 
     # Process the rest of the lines
-    for line in input_lines[1:]:
+    for line in input_lines[0:]:
         # Remove comments and strip leading/trailing whitespace
         line = re.sub(r'#.*', '', line).strip()
 
@@ -207,20 +238,19 @@ def preprocess_input(input_lines):
     # Join the preprocessed lines with newline characters
     return '\n'.join(preprocessed_lines)
 
-def define_var_and_labels(lines):
-    for line in lines:
-        # Check if the line declares global variables
-        if re.match(DEFVAR_REGEX, line):
-            declaring_global_vars = True
-            global_var = line.split()[1]
-            if global_var:
-                global_vars.add(global_var)
-
-        # Check if the line defines a label
-        elif re.match(LABEL_REGEX, line):
-            label_name = line.split()[1]
-            labels.add(label_name)
-
+# def define_var_and_labels(lines):
+#     for line in lines:
+#         # Check if the line declares global variables
+#         if re.match(DEFVAR_REGEX, line):
+#             declaring_global_vars = True
+#             global_var = line.split()[1]
+#             if global_var:
+#                 global_vars.add(global_var)
+#
+#         # Check if the line defines a label
+#         elif re.match(LABEL_REGEX, line):
+#             label_name = line.split()[1]
+#             labels.add(label_name)
 
 def parse_code(preprocessed_lines):
     instructions = []
@@ -228,11 +258,14 @@ def parse_code(preprocessed_lines):
     # Split the preprocessed lines into individual lines
     lines = preprocessed_lines.split('\n')
 
-    define_var_and_labels(lines)
+    # define_var_and_labels(lines)
 
     for line in lines:
         # Process each line
         line = line.strip()
+
+        if line == '.IPPcode24':
+            continue
 
         instruction = parse_instruction(line)
         if instruction[0]:  # Check if the instruction is not None
@@ -252,7 +285,7 @@ def parse_instruction(line):
     opcode = tokens[0].upper()
 
     if opcode not in CODE_COMMANDS:
-        return None, None, None, None
+        return exit(ERROR_SYNTAX)
 
     # Check if the number of arguments is correct
     check_number_of_args(tokens, opcode, line)
@@ -266,17 +299,18 @@ def parse_instruction(line):
     for i, arg in enumerate(args):
         if arg is not None:
             check_type(arg, i, opcode)
-            # Process constant string with escape sequences
-            args[i] = process_constant_string(arg)
-            # Validate the variable name
-
-            if arg_types[i] == E_ARG_TYPE.VAR:
-                var_name = arg.split('@')[1]  # Extract the variable name part
-                if not validate_variable_name(var_name):
-                    print(f"Invalid variable name: {var_name}")
-                    sys.exit(ERROR_SYNTAX)
 
     return (opcode,) + tuple(args) + tuple(arg_types)
+
+
+def remove_arg_type_prefix(arg):
+    if arg is not None:
+        # Check if the argument starts with a recognized prefix
+        if arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@") or arg.startswith("nil@"):
+            # If it does, remove the prefix and return the remaining part
+            return arg.split('@', 1)[-1]
+    # If the argument is None or doesn't start with a recognized prefix, return it as is
+    return arg
 
 
 def generate_xml(instructions):
@@ -284,7 +318,13 @@ def generate_xml(instructions):
     root.set("language", "IPPcode24")
     order = 1
     for instruction in instructions:
+
         opcode, arg1, arg2, arg3, arg1_type, arg2_type, arg3_type = instruction
+
+        # Remove unnecessary argument type prefixes
+        arg1 = remove_arg_type_prefix(arg1)
+        arg2 = remove_arg_type_prefix(arg2)
+        arg3 = remove_arg_type_prefix(arg3)
 
         instruction_element = ET.SubElement(root, "instruction")
         instruction_element.set("order", str(order))
@@ -329,10 +369,10 @@ def main():
     process_args()
 
     # Read input lines
-    # input_lines = sys.stdin.readlines()
+    input_lines = sys.stdin.readlines()
 
-    with open ('./IPP2024.txt', 'r') as file:
-        input_lines = file.readlines()
+    # with open('./IPP2024.txt', 'r') as file:
+    #     input_lines = file.readlines()
     # Preprocess input
     preprocessed_lines = preprocess_input(input_lines)
 
@@ -341,15 +381,11 @@ def main():
 
     # Parse input to the file
     instructions = parse_code(preprocessed_lines)
-    if not instructions:
-        exit(ERROR_SYNTAX)
+    # if not instructions:
+    #     exit(ERROR_OTHER_SYNTAX)
 
-    # Print the parsed instructions
-    print(instructions)
-    print(labels)
     # Generate XML
     generate_xml(instructions)
-
 
 if __name__ == "__main__":
     main()
