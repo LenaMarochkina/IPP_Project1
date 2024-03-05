@@ -12,9 +12,13 @@ ERROR_OPEN_FILE = 11
 # Enum for argument types
 class E_ARG_TYPE:
     VAR = 'var'
-    SYMB = 'symb'
+    INT = 'int'
+    BOOL = 'bool'
+    STRING = 'string'
+    NIL = 'nil'
     LABEL = 'label'
     TYPE = 'type'
+    SYMB = 'symb'
 
 
 # Class to represent command with opcode and expected argument types
@@ -103,28 +107,37 @@ def validate_variable_name(var):
     return bool(re.match(VAR_NAME_REGEX, var))
 
 
-def recognize_arg_type(arg):
-    if arg is None:
+def recognize_arg_type(arg, opcode):
+    if opcode == 'LABEL' and arg is not None:
+        return E_ARG_TYPE.LABEL
+    elif arg is None:
         return None
     elif arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
         return E_ARG_TYPE.VAR
-    elif arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@") or arg.startswith("nil@"):
-        return E_ARG_TYPE.SYMB
-    elif arg.startswith("label@"):
-        return E_ARG_TYPE.LABEL
-    elif arg in ["int", "bool", "string"]:
-        return E_ARG_TYPE.TYPE
+    elif arg.startswith("int@"):
+        return E_ARG_TYPE.INT
+    elif arg.startswith("bool@"):
+        return E_ARG_TYPE.BOOL
+    elif arg.startswith("string@"):
+        return E_ARG_TYPE.STRING
+    elif arg.startswith("nil@"):
+        return E_ARG_TYPE.NIL
     else:
         # If the argument does not match any recognized pattern, return None
         return None
 
 
 def check_type(arg, arg_number, opcode, global_vars, local_vars):
-    if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
-        print('Wrong argument type:', arg)
-        sys.exit(ERROR_SYNTAX)
+    arg_type = recognize_arg_type(arg, opcode)
+    if arg_type != CODE_COMMANDS[opcode].arg_types[arg_number]:
+        # Check if the arg type is a string constant and the expected type is SYMB
+        if arg_type == E_ARG_TYPE.STRING or E_ARG_TYPE.INT or E_ARG_TYPE.BOOL or E_ARG_TYPE.NIL and CODE_COMMANDS[opcode].arg_types[arg_number] == E_ARG_TYPE.SYMB:
+            return  # Allow string constants to satisfy the SYMB requirement
+        else:
+            print('Wrong argument type:', arg)
+            sys.exit(ERROR_SYNTAX)
 
-    if arg and recognize_arg_type(arg) == E_ARG_TYPE.VAR:
+    if arg and arg_type == E_ARG_TYPE.VAR:
         if arg.startswith("GF@") and arg not in global_vars:
             print("Global variable not declared:", arg)
             sys.exit(ERROR_SYNTAX)
@@ -234,7 +247,7 @@ def parse_instruction(line, global_vars, local_vars):
     args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
 
     # Recognize arg type for each arg and place it in args_type array
-    arg_types = [recognize_arg_type(arg) for arg in args]
+    arg_types = [recognize_arg_type(arg, opcode) for arg in args]
 
     # Check argument types after assignment
     for i, arg in enumerate(args):
