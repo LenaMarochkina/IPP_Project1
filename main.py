@@ -8,6 +8,10 @@ ERROR_SYNTAX = 22
 ERROR_OTHER_SYNTAX = 23
 ERROR_OPEN_FILE = 11
 
+# Global variables
+global_vars = set()
+local_vars = set()
+labels = set()
 
 # Enum for argument types
 class E_ARG_TYPE:
@@ -20,13 +24,11 @@ class E_ARG_TYPE:
     TYPE = 'type'
     SYMB = 'symb'
 
-
 # Class to represent command with opcode and expected argument types
 class CodeCommand:
     def __init__(self, opcode, arg_types):
         self.opcode = opcode
         self.arg_types = arg_types
-
 
 # Dictionary to store predefined commands with their argument types
 CODE_COMMANDS = {
@@ -73,6 +75,8 @@ TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|P
 VAR_NAME_REGEX = r'^[a-z-A-Z_\-$&%*!?][\w_\-$&%*!?]*$'
 # Regular expression to match "DEFVAR" followed by optional whitespace and "GF@"
 DEFVAR_REGEX = r'^DEFVAR\s+\w+'
+# Regular expression to match "LABEL" followed by optional whitespace and "GF@"
+LABEL_REGEX = r'^LABEL\s+\w+'
 
 
 def check_header(preprocessed_lines):
@@ -107,10 +111,8 @@ def validate_variable_name(var):
     return bool(re.match(VAR_NAME_REGEX, var))
 
 
-def recognize_arg_type(arg, opcode):
-    if opcode == 'LABEL' and arg is not None:
-        return E_ARG_TYPE.LABEL
-    elif arg is None:
+def recognize_arg_type(arg):
+    if arg is None:
         return None
     elif arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
         return E_ARG_TYPE.VAR
@@ -122,13 +124,18 @@ def recognize_arg_type(arg, opcode):
         return E_ARG_TYPE.STRING
     elif arg.startswith("nil@"):
         return E_ARG_TYPE.NIL
+    elif arg in labels:
+        return E_ARG_TYPE.LABEL
     else:
         # If the argument does not match any recognized pattern, return None
         return None
 
 
-def check_type(arg, arg_number, opcode, global_vars, local_vars):
-    arg_type = recognize_arg_type(arg, opcode)
+def check_type(arg, arg_number, opcode):
+    global global_vars
+    global local_vars
+
+    arg_type = recognize_arg_type(arg)
     if arg_type != CODE_COMMANDS[opcode].arg_types[arg_number]:
         # Check if the arg type is a string constant and the expected type is SYMB
         if arg_type == E_ARG_TYPE.STRING or E_ARG_TYPE.INT or E_ARG_TYPE.BOOL or E_ARG_TYPE.NIL and CODE_COMMANDS[opcode].arg_types[arg_number] == E_ARG_TYPE.SYMB:
@@ -200,12 +207,22 @@ def preprocess_input(input_lines):
     # Join the preprocessed lines with newline characters
     return '\n'.join(preprocessed_lines)
 
+def define_var_and_labels(line):
+    # Check if the line declares global variables
+    if re.match(DEFVAR_REGEX, line):
+        declaring_global_vars = True
+        global_var = line.split()[1]
+        if global_var:
+            global_vars.add(global_var)
+
+    # Check if the line defines a label
+    elif re.match(LABEL_REGEX, line):
+        label_name = line.split()[1]
+        labels.add(label_name)
 
 
 def parse_code(preprocessed_lines):
     instructions = []
-    global_vars = set()
-    local_vars = set()
 
     # Split the preprocessed lines into individual lines
     lines = preprocessed_lines.split('\n')
@@ -214,22 +231,17 @@ def parse_code(preprocessed_lines):
         # Process each line
         line = line.strip()
 
-        # Check if the line declares global variables
-        if re.match(DEFVAR_REGEX, line):
-            declaring_global_vars = True
-            global_var = line.split()[1]  # Extract only the variable name without 'GF@'
-            if global_var:
-                global_vars.add(global_var)
+        define_var_and_labels(line)
 
-        instruction = parse_instruction(line, global_vars, local_vars)
+        instruction = parse_instruction(line)
         if instruction[0]:  # Check if the instruction is not None
             instructions.append(instruction)
 
-    # Return the instructions and variable sets
-    return instructions, global_vars, local_vars
+    # Return the instructions
+    return instructions
 
 
-def parse_instruction(line, global_vars, local_vars):
+def parse_instruction(line):
     # Check if the line contains only one opcode
     check_single_opcode(line)
 
@@ -247,12 +259,12 @@ def parse_instruction(line, global_vars, local_vars):
     args = [tokens[i] if i < len(tokens) else None for i in range(1, 4)]
 
     # Recognize arg type for each arg and place it in args_type array
-    arg_types = [recognize_arg_type(arg, opcode) for arg in args]
+    arg_types = [recognize_arg_type(arg) for arg in args]
 
     # Check argument types after assignment
     for i, arg in enumerate(args):
         if arg is not None:
-            check_type(arg, i, opcode, global_vars, local_vars)
+            check_type(arg, i, opcode)
             # Process constant string with escape sequences
             args[i] = process_constant_string(arg)
             # Validate the variable name
@@ -325,12 +337,14 @@ def main():
     check_header(preprocessed_lines)
 
     # Parse input to the file
-    instructions, global_vars, local_vars = parse_code(preprocessed_lines)
+    instructions = parse_code(preprocessed_lines)
     if not instructions:
         exit(ERROR_SYNTAX)
 
+    print(labels)
     # Generate XML
     generate_xml(instructions)
+
 
 if __name__ == "__main__":
     main()
