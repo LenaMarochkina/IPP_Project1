@@ -67,6 +67,8 @@ CODE_COMMANDS = {
 TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|POPFRAME|CALL|RETURN|PUSHS|POPS|ADD|SUB|MUL|IDIV|LT|GT|EQ|AND|OR|NOT|INT2CHAR|STRI2INT|READ|STRLEN|GETCHAR|SETCHAR|TYPE|JUMP|JUMPIFEQ|JUMPIFNEQ|EXIT|DPRINT|BREAK)\s+([^\s]+)\s*([^\s]+)?\s*([^\s#]+)?'
 LABEL_REGEX = r'^[^\s]+$'
 STRING_REGEX = r'^string@(.+)$'
+# Regular expression to match "DEFVAR" followed by optional whitespace and "GF@"
+DEFVAR_REGEX = r'^DEFVAR\s+\w+'
 
 
 def recognize_arg_type(arg):
@@ -98,8 +100,21 @@ def check_type(arg, arg_number, opcode, global_vars, local_vars):
             print("Local variable not declared:", arg)
             sys.exit(ERROR_SYNTAX)
 
+def check_single_opcode(line):
+    tokens = line.split()
+
+    # Count the number of opcodes in the line
+    num_opcodes = sum(1 for token in tokens if token.upper() in CODE_COMMANDS)
+
+    # If more than one opcode is found, raise an error
+    if num_opcodes > 1:
+        print("Error: More than one opcode found in the line:", line)
+        sys.exit(ERROR_SYNTAX)
 
 def parse_instruction(line, global_vars, local_vars):
+    # Check if the line contains only one opcode
+    check_single_opcode(line)
+
     tokens = line.split()
 
     # Convert the opcode to uppercase
@@ -138,7 +153,7 @@ def parse_code(preprocessed_lines):
         line = line.strip()
 
         # Check if the line declares global variables
-        if line.startswith("DEFVAR GF@"):
+        if re.match(DEFVAR_REGEX, line):
             declaring_global_vars = True
             global_var = line.split()[1]  # Extract only the variable name without 'GF@'
             if global_var:
