@@ -50,9 +50,9 @@ CODE_COMMANDS = {
     'EQ': CodeCommand('EQ', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
     'AND': CodeCommand('AND', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
     'OR': CodeCommand('OR', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
-    'NOT': CodeCommand('NOT', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
+    'NOT': CodeCommand('NOT', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB]),
     'INT2CHAR': CodeCommand('INT2CHAR', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB]),
-    'STRI2INT': CodeCommand('STRI2INT', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB]),
+    'STRI2INT': CodeCommand('STRI2INT', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
     'READ': CodeCommand('READ', [E_ARG_TYPE.VAR, E_ARG_TYPE.TYPE]),
     'WRITE': CodeCommand('WRITE', [E_ARG_TYPE.SYMB]),
     'CONCAT': CodeCommand('CONCAT', [E_ARG_TYPE.VAR, E_ARG_TYPE.SYMB, E_ARG_TYPE.SYMB]),
@@ -260,11 +260,11 @@ def parse_code(preprocessed_lines):
 
     # define_var_and_labels(lines)
 
-    for line in lines:
+    for count, line in enumerate(lines):
         # Process each line
         line = line.strip()
 
-        if line == '.IPPcode24':
+        if count == 0 and line == '.IPPcode24':
             continue
 
         instruction = parse_instruction(line)
@@ -371,8 +371,6 @@ def main():
     # Read input lines
     input_lines = sys.stdin.readlines()
 
-    # with open('./IPP2024.txt', 'r') as file:
-    #     input_lines = file.readlines()
     # Preprocess input
     preprocessed_lines = preprocess_input(input_lines)
 
@@ -381,8 +379,6 @@ def main():
 
     # Parse input to the file
     instructions = parse_code(preprocessed_lines)
-    # if not instructions:
-    #     exit(ERROR_OTHER_SYNTAX)
 
     # Generate XML
     generate_xml(instructions)
