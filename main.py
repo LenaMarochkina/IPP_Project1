@@ -4,8 +4,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 ERROR_HEADER = 21
-ERROR_OPCODE = 22
-ERROR_SYNTAX = 23
+ERROR_SYNTAX = 22
+ERROR_OTHER_SYNTAX = 23
 ERROR_OPEN_FILE = 11
 
 
@@ -65,16 +65,16 @@ CODE_COMMANDS = {
 
 # Regular expressions for tokenizing the code
 TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|POPFRAME|CALL|RETURN|PUSHS|POPS|ADD|SUB|MUL|IDIV|LT|GT|EQ|AND|OR|NOT|INT2CHAR|STRI2INT|READ|STRLEN|GETCHAR|SETCHAR|TYPE|JUMP|JUMPIFEQ|JUMPIFNEQ|EXIT|DPRINT|BREAK)\s+([^\s]+)\s*([^\s]+)?\s*([^\s#]+)?'
-LABEL_REGEX = r'^[^\s]+$'
-STRING_REGEX = r'^string@(.+)$'
+# Regular expression for a valid variable name
+VAR_NAME_REGEX = r'^[a-z-A-Z_\-$&%*!?][\w_\-$&%*!?]*$'
 # Regular expression to match "DEFVAR" followed by optional whitespace and "GF@"
 DEFVAR_REGEX = r'^DEFVAR\s+\w+'
 
 
-def check_header():
-    try:
-        first_line = input().strip()
-    except EOFError:
+def check_header(preprocessed_lines):
+    first_line = preprocessed_lines.split('\n')[0].strip()
+
+    if not first_line:
         print('Empty input')
         sys.exit(ERROR_HEADER)
 
@@ -95,12 +95,20 @@ def check_single_opcode(line):
         sys.exit(ERROR_SYNTAX)
 
 
+def validate_variable_name(var):
+    """
+    Validate a variable name according to the specified rules.
+    Returns True if the variable name is valid, False otherwise.
+    """
+    return bool(re.match(VAR_NAME_REGEX, var))
+
+
 def recognize_arg_type(arg):
     if arg is None:
         return None
     elif arg.startswith("GF@") or arg.startswith("LF@") or arg.startswith("TF@"):
         return E_ARG_TYPE.VAR
-    elif arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@"):
+    elif arg.startswith("int@") or arg.startswith("bool@") or arg.startswith("string@") or arg.startswith("nil@"):
         return E_ARG_TYPE.SYMB
     elif arg.startswith("label@"):
         return E_ARG_TYPE.LABEL
@@ -114,7 +122,7 @@ def recognize_arg_type(arg):
 def check_type(arg, arg_number, opcode, global_vars, local_vars):
     if recognize_arg_type(arg) != CODE_COMMANDS[opcode].arg_types[arg_number]:
         print('Wrong argument type:', arg)
-        sys.exit(ERROR_OPCODE)
+        sys.exit(ERROR_SYNTAX)
 
     if arg and recognize_arg_type(arg) == E_ARG_TYPE.VAR:
         if arg.startswith("GF@") and arg not in global_vars:
@@ -128,7 +136,16 @@ def check_type(arg, arg_number, opcode, global_vars, local_vars):
 def check_number_of_args(tokens, opcode, line):
     if len(tokens) - 1 != len(CODE_COMMANDS[opcode].arg_types):
         print('Wrong arguments number:', line)
-        sys.exit(ERROR_OPCODE)
+        sys.exit(ERROR_SYNTAX)
+
+
+def process_constant_string(arg):
+    if arg.startswith("string@"):
+        arg_value = arg[len("string@"):]  # Extract the value part of the constant string
+        arg_value = re.sub(r'\\(\d{3})', lambda m: chr(int(m.group(1))), arg_value)  # Replace escape sequences
+        return arg_value  # Return the processed constant string value
+    else:
+        return arg  # Return the argument unchanged if it's not a constant string with escape sequences
 
 
 def process_args():
@@ -148,19 +165,28 @@ def process_args():
 def preprocess_input(input_lines):
     preprocessed_lines = []
 
-    # Process the first line separately and add it directly to the preprocessed lines
-    preprocessed_lines.append(input_lines[0].strip())
+    # Flag to indicate if the first program line has been encountered
+    program_started = False
 
     # Process the rest of the lines
     for line in input_lines[1:]:
         # Remove comments and strip leading/trailing whitespace
         line = re.sub(r'#.*', '', line).strip()
-        # Skip empty lines
+
+        # Skip empty lines before the first program line
+        if not program_started and not line:
+            continue
+
+        # Mark that the first program line has been encountered
+        program_started = True
+
+        # Add non-empty lines to the preprocessed lines
         if line:
             preprocessed_lines.append(line)
 
     # Join the preprocessed lines with newline characters
     return '\n'.join(preprocessed_lines)
+
 
 
 def parse_code(preprocessed_lines):
@@ -214,6 +240,15 @@ def parse_instruction(line, global_vars, local_vars):
     for i, arg in enumerate(args):
         if arg is not None:
             check_type(arg, i, opcode, global_vars, local_vars)
+            # Process constant string with escape sequences
+            args[i] = process_constant_string(arg)
+            # Validate the variable name
+
+            if arg_types[i] == E_ARG_TYPE.VAR:
+                var_name = arg.split('@')[1]  # Extract the variable name part
+                if not validate_variable_name(var_name):
+                    print(f"Invalid variable name: {var_name}")
+                    sys.exit(ERROR_SYNTAX)
 
     return (opcode,) + tuple(args) + tuple(arg_types)
 
@@ -267,23 +302,19 @@ def usage():
 def main():
     process_args()
 
-    # Check the first line is correct
-    try:
-        check_header()
-    except (ValueError, IOError) as e:
-        print("Error:", str(e))
-        sys.exit(ERROR_OPEN_FILE)
-
     # Read input lines
     input_lines = sys.stdin.readlines()
 
     # Preprocess input
     preprocessed_lines = preprocess_input(input_lines)
+
+    # Check header
+    check_header(preprocessed_lines)
+
     # Parse input to the file
     instructions, global_vars, local_vars = parse_code(preprocessed_lines)
     if not instructions:
         exit(ERROR_SYNTAX)
-    print(instructions)
 
     # Generate XML
     generate_xml(instructions)
