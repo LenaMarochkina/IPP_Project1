@@ -102,10 +102,11 @@ def check_type(arg, arg_number, opcode, global_vars, local_vars):
 def parse_instruction(line, global_vars, local_vars):
     tokens = line.split()
 
-    if tokens[0] not in CODE_COMMANDS:
-        return None, None, None, None
+    # Convert the opcode to uppercase
+    opcode = tokens[0].upper()
 
-    opcode = tokens[0]
+    if opcode not in CODE_COMMANDS:
+        return None, None, None, None
 
     if len(tokens) - 1 != len(CODE_COMMANDS[opcode].arg_types):
         print('Wrong arguments number:', line)
@@ -119,29 +120,22 @@ def parse_instruction(line, global_vars, local_vars):
     # Check argument types after assignment
     for i, arg in enumerate(args):
         if arg is not None:
-            # Check if the variable is global and has been declared
-            if arg.startswith("GF@") and arg not in global_vars:
-                print(f"Global variable not declared: {arg}")
-                sys.exit(ERROR_OPCODE)
             check_type(arg, i, opcode, global_vars, local_vars)
 
     return (opcode,) + tuple(args) + tuple(arg_types)
 
 
-def parse_code():
+def parse_code(preprocessed_lines):
     instructions = []
     global_vars = set()
     local_vars = set()
 
-    # Flag to indicate whether global variables are being declared
-    declaring_global_vars = False
+    # Split the preprocessed lines into individual lines
+    lines = preprocessed_lines.split('\n')
 
-    while True:
-        try:
-            line = input().strip()
-        except EOFError:
-            break
-        line = remove_comments([line])[0]
+    for line in lines:
+        # Process each line
+        line = line.strip()
 
         # Check if the line declares global variables
         if line.startswith("DEFVAR GF@"):
@@ -149,21 +143,17 @@ def parse_code():
             global_var = line.split()[1]  # Extract only the variable name without 'GF@'
             if global_var:
                 global_vars.add(global_var)
-        elif line.strip() == "":
-            declaring_global_vars = False
-        # elif declaring_global_vars:
-        #     global_var = line.split()[0][3:]  # Extract only the variable name without 'GF@'
-        #     print(global_var)
-        #     if global_var:
-        #         global_vars.add(global_var)
+
         instruction = parse_instruction(line, global_vars, local_vars)
         if instruction[0]:  # Check if the instruction is not None
             instructions.append(instruction)
+
+    # Return the instructions and variable sets
     return instructions, global_vars, local_vars
 
 
+
 def convert_string(string):
-    print('Here', string)
     match = re.match(STRING_REGEX, string)
     if match:
         return match.group(1)
@@ -247,6 +237,23 @@ def check_header():
         print('Wrong header:', first_line)
         sys.exit(ERROR_HEADER)
 
+def preprocess_input(input_lines):
+    preprocessed_lines = []
+
+    # Process the first line separately and add it directly to the preprocessed lines
+    preprocessed_lines.append(input_lines[0].strip())
+
+    # Process the rest of the lines
+    for line in input_lines[1:]:
+        # Remove comments and strip leading/trailing whitespace
+        line = re.sub(r'#.*', '', line).strip()
+        # Skip empty lines
+        if line:
+            preprocessed_lines.append(line)
+
+    # Join the preprocessed lines with newline characters
+    return '\n'.join(preprocessed_lines)
+
 
 def main():
     process_args()
@@ -258,10 +265,16 @@ def main():
         print("Error:", str(e))
         sys.exit(ERROR_OPEN_FILE)
 
+    # Read input lines
+    input_lines = sys.stdin.readlines()
+
+    # Preprocess input
+    preprocessed_lines = preprocess_input(input_lines)
     # Parse input to the file
-    instructions, global_vars, local_vars = parse_code()
+    instructions, global_vars, local_vars = parse_code(preprocessed_lines)
     if not instructions:
         exit(ERROR_SYNTAX)
+    print(instructions)
 
     # Generate XML
     generate_xml(instructions)
