@@ -3,15 +3,12 @@ import getopt
 import sys
 import xml.etree.ElementTree as ET
 
+
 ERROR_HEADER = 21
 ERROR_SYNTAX = 22
 ERROR_OTHER_SYNTAX = 23
 ERROR_OPEN_FILE = 11
 
-# Global variables
-global_vars = set()
-local_vars = set()
-labels = set()
 
 # Enum for argument types
 class E_ARG_TYPE:
@@ -24,11 +21,13 @@ class E_ARG_TYPE:
     TYPE = 'type'
     SYMB = 'symb'
 
+
 # Class to represent command with opcode and expected argument types
 class CodeCommand:
     def __init__(self, opcode, arg_types):
         self.opcode = opcode
         self.arg_types = arg_types
+
 
 # Dictionary to store predefined commands with their argument types
 CODE_COMMANDS = {
@@ -68,6 +67,7 @@ CODE_COMMANDS = {
     'DPRINT': CodeCommand('DPRINT', [E_ARG_TYPE.SYMB]),
     'BREAK': CodeCommand('BREAK', [])
 }
+
 
 # Regular expressions for tokenizing the code
 TOKEN_REGEX = r'(DEFVAR|MOVE|LABEL|JUMPIFEQ|WRITE|CONCAT|CREATEFRAME|PUSHFRAME|POPFRAME|CALL|RETURN|PUSHS|POPS|ADD|SUB|MUL|IDIV|LT|GT|EQ|AND|OR|NOT|INT2CHAR|STRI2INT|READ|STRLEN|GETCHAR|SETCHAR|TYPE|JUMP|JUMPIFEQ|JUMPIFNEQ|EXIT|DPRINT|BREAK)\s+([^\s]+)\s*([^\s]+)?\s*([^\s#]+)?'
@@ -110,6 +110,7 @@ def validate_variable_name(var):
     """
     return bool(re.match(VAR_NAME_REGEX, var))
 
+
 def is_valid_integer(value):
     # Decimal integer regex pattern
     decimal_pattern = r'^[+-]?\d+$'
@@ -129,9 +130,11 @@ def is_valid_bool(value):
     # Check if the boolean value is either 'true' or 'false'
     return value in ['true', 'false']
 
+
 def is_valid_nil(value):
     # Check if the value is 'nil'
     return value == 'nil'
+
 
 def recognize_arg_type(arg):
     if arg is None:
@@ -168,10 +171,6 @@ def recognize_arg_type(arg):
         return E_ARG_TYPE.LABEL
     else:
         return None
-    # else:
-    #     # If the argument does not match any recognized pattern, return error
-    #     print("Invalid argument format:", arg)
-    #     sys.exit(ERROR_OTHER_SYNTAX)
 
 
 def check_type(arg, arg_number, opcode):
@@ -183,14 +182,6 @@ def check_type(arg, arg_number, opcode):
         else:
             print('Wrong argument type:', arg)
             sys.exit(ERROR_OTHER_SYNTAX)
-
-    # if arg and arg_type == E_ARG_TYPE.VAR:
-    #     if arg.startswith("GF@") and arg not in global_vars:
-    #         print("Global variable not declared:", arg)
-    #         sys.exit(ERROR_SYNTAX)
-    #     elif arg.startswith("LF@") and arg not in local_vars:
-    #         print("Local variable not declared:", arg)
-    #         sys.exit(ERROR_SYNTAX)
 
 
 def check_number_of_args(tokens, opcode, line):
@@ -238,19 +229,6 @@ def preprocess_input(input_lines):
     # Join the preprocessed lines with newline characters
     return '\n'.join(preprocessed_lines)
 
-# def define_var_and_labels(lines):
-#     for line in lines:
-#         # Check if the line declares global variables
-#         if re.match(DEFVAR_REGEX, line):
-#             declaring_global_vars = True
-#             global_var = line.split()[1]
-#             if global_var:
-#                 global_vars.add(global_var)
-#
-#         # Check if the line defines a label
-#         elif re.match(LABEL_REGEX, line):
-#             label_name = line.split()[1]
-#             labels.add(label_name)
 
 def parse_code(preprocessed_lines):
     instructions = []
@@ -382,6 +360,7 @@ def main():
 
     # Generate XML
     generate_xml(instructions)
+
 
 if __name__ == "__main__":
     main()
